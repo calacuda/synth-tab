@@ -14,7 +14,7 @@ android_logger = "0.15"
 android-activity = { version = "0.6", features = ["native-activity"] }
 ndk-context = "0.1"
 jni = { version = "0.21", features = ["invocation"] }
-stepper-synth = { git = "https://github.com/calacuda/stepper-synth", branch = "feature", version = "0.1.0", default-features = false }
+stepper-synth = { git = "https://github.com/calacuda/stepper-synth", branch = "feature", version = "0.1.0", default-features = false, features = ["tinyaudio", "anyhow", ] }
 futures = "0.3"
 tinyaudio = "1.1.0"
 lazy_static = "1.5.0"

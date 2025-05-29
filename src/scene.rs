@@ -44,7 +44,7 @@ impl Scene {
 
     pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
         render_pass.set_pipeline(&self.pipeline);
-        render_pass.draw(0..3, 0..1);
+        // render_pass.draw(0..3, 0..1);
     }
 }
 
@@ -86,7 +86,7 @@ fn build_pipeline(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
+            // topology: wgpu::PrimitiveTopology::TriangleList,
             front_face: wgpu::FrontFace::Ccw,
             ..Default::default()
         },

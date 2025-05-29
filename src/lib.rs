@@ -8,7 +8,7 @@ use iced_winit::{conversion, winit};
 use lazy_static::lazy_static;
 use log::{debug, error, LevelFilter};
 use log::{info, warn};
-use midi_control::{KeyEvent, MidiMessage};
+use midi_control::{ControlEvent, KeyEvent, MidiMessage};
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
@@ -19,13 +19,14 @@ use std::{
     sync::Mutex,
     time::{Duration, SystemTime},
 };
+use stepper_synth_backend::synth_engines::SynthModule;
 use synth::{make_synth, TabSynth};
 // use stepper_synth_backend::synth_engines::organ::organ::Organ;
-use stepper_synth_backend::MidiControlled;
 use stepper_synth_backend::{
     synth_engines::{Synth, SynthEngine},
     SampleGen, CHANNEL_SIZE, SAMPLE_RATE,
 };
+use stepper_synth_backend::{KnobCtrl, MidiControlled};
 // use synth::make_synth;
 use wgpu::{Device, Instance, Queue, TextureFormat};
 use winit::application::ApplicationHandler;
@@ -101,9 +102,72 @@ fn android_main(android_app: AndroidApp) {
 
         move || {
             while let Ok(msg) = MIDI_RECV.recv() {
-                if let Ok(ref mut synth) = synth.write() {
-                    if let Ok(ref mut synth) = synth.synth.lock() {
-                        synth.midi_input(&msg);
+                if let Ok(ref mut tab_synth) = synth.write() {
+                    if let Ok(ref mut synth) = tab_synth.synth.write() {
+                        // synth.midi_input(&msg);
+                        match msg {
+                            MidiMessage::Invalid => {
+                                error!("system received an invalid MIDI message.");
+                            }
+                            MidiMessage::NoteOn(_, KeyEvent { key, value }) => {
+                                debug!("playing note: {key}");
+                                synth.engine.play(key, value)
+                            }
+                            MidiMessage::NoteOff(_, KeyEvent { key, value: _ }) => {
+                                synth.engine.stop(key)
+                            }
+                            MidiMessage::PitchBend(_, lsb, msb) => {
+                                let bend =
+                                    i16::from_le_bytes([lsb, msb]) as f32 / (32_000.0 * 0.5) - 1.0;
+
+                                if bend > 0.02 || bend < -0.020 {
+                                    synth.engine.bend(bend);
+                                    // send();
+                                } else {
+                                    synth.engine.unbend();
+                                    // send();
+                                }
+                            }
+                            MidiMessage::ControlChange(_, ControlEvent { control, value }) => {
+                                let value = value as f32 / 127.0;
+                                // let effects = self.target_effects;
+
+                                match synth.engine {
+                                    SynthModule::WaveTable(ref mut wt) => {
+                                        wt.synth.midi_input(&msg);
+                                    }
+                                    ref mut engine => {
+                                        match control {
+                                            // 70 if effects => self.get_effect().knob_1(value),
+                                            // 71 if effects => self.get_effect().knob_2(value),
+                                            // 72 if effects => self.get_effect().knob_3(value),
+                                            // 73 if effects => self.get_effect().knob_4(value),
+                                            // 70 if !effects => self.get_engine().knob_1(value),
+                                            // 71 if !effects => self.get_engine().knob_2(value),
+                                            // 72 if !effects => self.get_engine().knob_3(value),
+                                            // 73 if !effects => self.get_engine().knob_4(value),
+                                            70 => engine.knob_1(value),
+                                            71 => engine.knob_2(value),
+                                            72 => engine.knob_3(value),
+                                            73 => engine.knob_4(value),
+                                            74 => engine.knob_5(value),
+                                            75 => engine.knob_6(value),
+                                            76 => engine.knob_7(value),
+                                            77 => engine.knob_8(value),
+                                            1 => engine.volume_swell(value),
+                                            _ => {
+                                                // info!("CC message => {control}-{value}");
+                                                false
+                                            }
+                                        };
+                                    }
+                                }
+                                // if self.engine_type == SynthEngineType::WaveTable {
+                                // } else {
+                                // }
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -170,10 +234,10 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         log::info!("Resumed");
-        // if self.app_data.is_some() {
-        //     log::info!("Already initialized, skipping");
-        //     return;
-        // }
+        if self.app_data.is_some() {
+            log::info!("Already initialized, skipping");
+            return;
+        }
 
         let instance = Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
@@ -246,7 +310,7 @@ impl ApplicationHandler<UserEvent> for App {
         );
 
         let scene = Scene::new(&device, format);
-        let controls = Controls::new(self.proxy.clone());
+        let controls = Controls::new(self.proxy.clone(), self.synth.clone());
 
         let mut debug = Debug::new();
         let engine = Engine::new(&adapter, &device, &queue, format, None);
